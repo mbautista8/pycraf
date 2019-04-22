@@ -3,7 +3,7 @@
 
 import sys
 from PyQt5 import QtCore, QtGui, QtWidgets
-# import numpy as np
+import numpy as np
 from astropy import units as u
 # from scipy.interpolate import interp1d
 from matplotlib.ticker import ScalarFormatter
@@ -132,6 +132,7 @@ PP_TEXT_TEMPLATE = '''
   </tbody>
 </table>
 '''
+
 
 class PycrafGui(QtWidgets.QMainWindow):
 
@@ -444,16 +445,50 @@ class PycrafGui(QtWidgets.QMainWindow):
             )
 
         # bullington point:
-        d_bp = (
-            results['h_rs'] - results['h_ts'] +
-            results['S_rim_50'] * results['distance']
-            ) / (results['S_tim_50'] + results['S_rim_50'])
-        h_bp = results['h_ts'] + results['S_tim_50'] * d_bp
-        _d_bp = d_bp.to(u.km).value
-        _h_bp = h_bp.to(u.m).value
-        print('d_bp, h_bp', d_bp, h_bp)
+
+        def bullpoint(a_p, d, h_ts, h_rs, S_tim, S_rim):
+
+            eps = d / a_p
+            x0 = 0
+            y0 = 1000 * a_p + h_ts
+            xn = (1000 * a_p + h_rs) * np.sin(eps)
+            yn = (1000 * a_p + h_rs) * np.cos(eps)
+            S_rim_ast = np.tan(np.arctan(S_rim / 1000) + eps)
+
+            b = (
+                (y0 - yn - (x0 - xn) * S_tim / 1000) /
+                (S_tim / 1000 + S_rim_ast)
+                )
+
+            x_bp = xn - b
+            y_bp = yn + b * S_rim_ast
+            print('x_bp, y_bp', x_bp, y_bp)
+
+            eps_bp = np.arctan2(x_bp, y_bp)
+            d_bp = eps_bp * a_p  # km
+            h_bp = np.sqrt(x_bp ** 2 + y_bp ** 2) - 1000 * a_p  # m
+
+            return d_bp, h_bp
 
         a_e = results['a_e_50'].to(u.m).value
+
+        # d_bp = (
+        #     results['h_rs'] - results['h_ts'] +
+        #     results['S_rim_50'] * results['distance']
+        #     ) / (results['S_tim_50'] + results['S_rim_50'])
+        # h_bp = results['h_ts'] + results['S_tim_50'] * d_bp
+        # _d_bp = d_bp.to(u.km).value
+        # _h_bp = h_bp.to(u.m).value
+
+        _d_bp, _h_bp = bullpoint(
+            results['a_e_50'].to(u.km).value,
+            distance.to(u.km).value,
+            results['h_ts'].to(u.m).value,
+            results['h_rs'].to(u.m).value,
+            results['S_tim_50'].to(u.m / u.km).value,
+            results['S_rim_50'].to(u.m / u.km).value,
+            )
+        print('d_bp, h_bp', _d_bp, _h_bp)
 
         if results['path_type'] == 1:
             pp_x = [_distances[0], _d_bp, _distances[-1]]
@@ -485,7 +520,36 @@ class PycrafGui(QtWidgets.QMainWindow):
             )
 
         aux_ax.plot(_distances, _heights, '-')
-        aux_ax.plot(pp_x, pp_y, '-')
+        # aux_ax.plot(pp_x, pp_y, '-')
+        aux_ax.plot(pp_x[1], pp_y[1], 'o')
+
+        # testing:
+        a = np.arange(0, 100, 1)
+        # all numbers in km
+        x0 = 0
+        y0 = results['a_e_50'].to(u.km).value + results['h_ts'].to(u.km).value
+        x_a = x0 + a
+        y_a = y0 + a * results['S_tim_50'].to(u.km / u.km).value
+        d_a = np.arctan2(x_a, y_a) * results['a_e_50'].to(u.km).value
+        h_a = np.sqrt(x_a ** 2 + y_a ** 2) - results['a_e_50'].to(u.km).value
+        print(d_a, h_a)
+        aux_ax.plot(d_a, h_a * 1000, '--')
+
+        b = np.arange(0, 100, 1)
+        # all numbers in km
+        eps = distance.to(u.km).value / results['a_e_50'].to(u.km).value
+        rn = results['a_e_50'].to(u.km).value + results['h_rs'].to(u.km).value
+        xn = rn * np.sin(eps)
+        yn = rn * np.cos(eps)
+        x_b = xn - b
+        y_b = yn + b * np.tan(
+            np.arctan(results['S_rim_50'].to(u.km / u.km).value) + eps
+            )
+        d_b = np.arctan2(x_b, y_b) * results['a_e_50'].to(u.km).value
+        h_b = np.sqrt(x_b ** 2 + y_b ** 2) - results['a_e_50'].to(u.km).value
+        print(d_b, h_b)
+        aux_ax.plot(d_b, h_b * 1000, '--')
+
         # aux_ax.plot(pp_hx, pp_hy, '-')
         ax.grid(color='0.5')
         ax.set_aspect('auto')

@@ -218,6 +218,8 @@ class PathProp(cyprop._PathProp):
             self.__params += cyprop.PARAMETERS_V14
         elif self._pp['version'] == 16:
             self.__params += cyprop.PARAMETERS_V16
+        elif self._pp['version'] == 17:
+            self.__params += cyprop.PARAMETERS_V17
 
         # no need to set property, as readonly and immutable
         # can just copy to __dict__

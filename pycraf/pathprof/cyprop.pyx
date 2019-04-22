@@ -30,7 +30,7 @@ np.import_array()
 
 __all__ = [
     'CLUTTER', 'CLUTTER_DATA',
-    'PARAMETERS_BASIC', 'PARAMETERS_V14', 'PARAMETERS_V16',
+    'PARAMETERS_BASIC', 'PARAMETERS_V14', 'PARAMETERS_V16', 'PARAMETERS_V17',
     'set_num_threads',
     ]
 
@@ -70,7 +70,7 @@ CLUTTER_DATA = np.array(
 cdef double[:, ::1] CLUTTER_DATA_V = CLUTTER_DATA
 
 PARAMETERS_BASIC = [
-    ('version', '12d', '(P.452 version; 14 or 16)', cnv.dimless),
+    ('version', '12d', '(P.452 version; 14, 16, or 17)', cnv.dimless),
     ('freq', '12.6f', 'GHz', apu.GHz),
     ('wavelen', '12.6f', 'm', apu.m),
     ('polarization', '12d', '(0 - horizontal, 1 - vertical)', cnv.dimless),
@@ -128,7 +128,7 @@ PARAMETERS_BASIC = [
     ]
 
 
-PARAMETERS_V16 = [
+PARAMETERS_V17 = PARAMETERS_V16 = [
     ('path_type_50', '12d', '(0 - LOS, 1 - transhoriz)', cnv.dimless),
     ('nu_bull_50', '12.6f', 'dimless', cnv.dimless),
     ('nu_bull_idx_50', '12d', 'dimless', cnv.dimless),
@@ -178,7 +178,7 @@ PARAMETERS_V14 = [
 # cdef object PARAMETERS_V16_V = PARAMETERS_V16
 
 cdef struct ppstruct:
-    int version  # P.452 version (14 or 16)
+    int version  # P.452 version (14, 16, or 17)
     double freq  # GHz
     double wavelen  # m
     int polarization  # 0 - horizontal, 1 - vertical
@@ -234,7 +234,7 @@ cdef struct ppstruct:
     double a_e_50  # km
     double a_e_b0  # km
 
-    # V16 diffraction calculation parameters
+    # V16/17 diffraction calculation parameters
     int path_type_50  # 0 - LOS, 1 - transhoriz
     double nu_bull_50  # dimless
     int nu_bull_idx_50  # dimless
@@ -336,7 +336,7 @@ cdef class _PathProp(object):
             ):
 
         assert time_percent <= 50.
-        assert version == 14 or version == 16
+        assert version == 14 or version == 16 or version == 17
 
         assert zone_t >= -1 and zone_t <= 11
         assert zone_r >= -1 and zone_r <= 11
@@ -593,6 +593,7 @@ cdef void _process_path(
     pp.a_e_50 = 6371. * 157. / (157. - pp.delta_N)
     pp.a_e_b0 = 6371. * 3.
 
+    # TODO: simply use a func typedef for v16 & v17 (dry principle )
     if pp.version == 16:
         (
             pp.path_type_50, pp.nu_bull_50,
@@ -640,7 +641,54 @@ cdef void _process_path(
             pp.wavelen,
             )
 
-    if pp.version == 14:
+    elif pp.version == 17:
+        (
+            pp.path_type_50, pp.nu_bull_50,
+            pp.nu_bull_idx_50,
+            pp.S_tim_50, pp.S_rim_50, pp.S_tr_50
+            ) = _diffraction_helper_v17(
+            pp.a_e_50, pp.distance,
+            distances_view, heights_view,
+            pp.h_ts, pp.h_rs,
+            pp.wavelen,
+            )
+
+        (
+            pp.path_type_b0, pp.nu_bull_b0,
+            pp.nu_bull_idx_b0,
+            pp.S_tim_b0, pp.S_rim_b0, pp.S_tr_b0
+            ) = _diffraction_helper_v17(
+            pp.a_e_b0, pp.distance,
+            distances_view, heights_view,
+            pp.h_ts, pp.h_rs,
+            pp.wavelen,
+            )
+
+        # similarly, we have to repeat the game with heights set to zero
+
+        (
+            pp.path_type_zh_50, pp.nu_bull_zh_50,
+            pp.nu_bull_idx_zh_50,
+            pp.S_tim_zh_50, pp.S_rim_zh_50, pp.S_tr_zh_50
+            ) = _diffraction_helper_v17(
+            pp.a_e_50, pp.distance,
+            distances_view, zheights_view,
+            pp.h_ts - pp.h_std, pp.h_rs - pp.h_srd,
+            pp.wavelen,
+            )
+
+        (
+            pp.path_type_zh_b0, pp.nu_bull_zh_b0,
+            pp.nu_bull_idx_zh_b0,
+            pp.S_tim_zh_b0, pp.S_rim_zh_b0, pp.S_tr_zh_b0
+            ) = _diffraction_helper_v17(
+            pp.a_e_b0, pp.distance,
+            distances_view, zheights_view,
+            pp.h_ts - pp.h_std, pp.h_rs - pp.h_srd,
+            pp.wavelen,
+            )
+
+    elif pp.version == 14:
 
         (
             pp.zeta_m, pp.i_m50, pp.nu_m50,
@@ -665,7 +713,7 @@ cdef void _process_path(
 
     if pp.version == 14:
         diff_edge_idx = pp.i_m50
-    elif pp.version == 16:
+    elif pp.version == 16 or pp.version == 17:
         diff_edge_idx = pp.nu_bull_idx_50
 
     (
@@ -772,6 +820,166 @@ cdef (double, double) _effective_antenna_heights(
         h_srd = h_srp
 
     return (h_std, h_srd)
+
+
+cdef inline double _slope_v17(
+        double a_p,
+        double d_i,
+        double h_i,
+        double h_ts,
+        ) nogil:
+
+    cdef:
+        double slope_i
+        double x0, y0, xi, yi
+        double v1_norm, v2_norm
+        double eps_i, alpha_i, beta_i, theta_i
+
+    eps_i = d_i / a_p
+    x0 = 0
+    y0 = 1000 * a_p + h_ts
+    xi = (1000 * a_p + h_i) * sin(eps_i)
+    yi = (1000 * a_p + h_i) * cos(eps_i)
+
+    v1_norm = sqrt(xi ** 2 + yi ** 2)
+    v2_norm = sqrt((xi - x0) ** 2 + (yi - y0) ** 2)
+    alpha_i = acos(
+        xi / v1_norm * (xi - x0) / v2_norm +
+        yi / v1_norm * (yi - y0) / v2_norm
+        )
+    beta_i = M_PI - alpha_i - eps_i
+    theta_i = beta_i - M_PI / 2
+
+    # want result as m / km
+
+    return 1000 * tan(theta_i)
+
+
+cdef inline (double, double) _bullpoint_v17(
+        double a_p,
+        double d,
+        double h_ts,
+        double h_rs,
+        double S_tim,
+        double S_rim,
+        ) nogil:
+
+    cdef:
+        double eps, eps_bp
+        double x0, y0, xn, yn, x_bp, y_bp
+        double b
+        double d_bp, h_bp
+
+    eps = d / a_p
+    x0 = 0
+    y0 = 1000 * a_p + h_ts
+    xn = (1000 * a_p + h_rs) * sin(eps)
+    yn = (1000 * a_p + h_rs) * cos(eps)
+
+    b = (y0 - yn - (x0 - xn) * S_tim / 1000) / (S_tim / 1000 + S_rim / 1000)
+
+    x_bp = xn - b
+    y_bp = yn + b * (tan(atan(S_rim / 1000) + eps))
+
+    eps_bp = atan2(y_bp, x_bp)
+    d_bp = eps_bp * a_p
+    h_bp = sqrt(x_bp ** 2 + y_bp ** 2) - a_p
+
+    return d_bp / 1000, h_bp
+
+
+
+
+cdef (int, double, int, double, double, double) _diffraction_helper_v17(
+        double a_p,
+        double distance,
+        double[::1] d_v,
+        double[::1] h_v,
+        double h_ts, double h_rs,
+        double wavelen,
+        ) nogil:
+
+    cdef:
+        int i, dsize
+        double d = distance, lam = wavelen, C_e500 = 500. / a_p
+        int path_type
+
+        double slope_i, slope_j, S_tim = -1.e31, S_tr, S_rim = -1.e31
+
+        int nu_bull_idx
+        double d_bp, nu_bull = -1.e31, nu_i
+
+        double x0 = 0, y0 = a_p + h_ts
+        double xi, yi
+        double v1_norm, v2_norm
+        double eps_i, alpha_i, beta_i, theta_i
+
+    dsize = d_v.shape[0]
+
+    for i in range(1, dsize - 1):
+
+        # slope_i = (
+        #     h_v[i] + C_e500 * d_v[i] * (d - d_v[i]) - h_ts
+        #     ) / d_v[i]
+        slope_i = _slope_v17(a_p, d_v[i], h_v[i], h_ts)
+
+        if slope_i > S_tim:
+            S_tim = slope_i
+
+    # S_tr = (h_rs - h_ts) / d
+    S_tr = _slope_v17(a_p, d, h_rs, h_ts)
+
+    if S_tim < S_tr:
+        path_type = 0
+    else:
+        path_type = 1
+
+    if path_type == 1:
+        # transhorizon
+        # find Bullington point, etc.
+        for i in range(1, dsize - 1):
+            # slope_j = (
+            #     h_v[i] + C_e500 * d_v[i] * (d - d_v[i]) - h_rs
+            #     ) / (d - d_v[i])
+            slope_j = _slope_v17(a_p, d - d_v[i], h_v[i], h_rs)
+
+            if slope_j > S_rim:
+                S_rim = slope_j
+
+        # TODO: are the following two equations correct??? don't think so!
+        d_bp = (h_rs - h_ts + S_rim * d) / (S_tim + S_rim)
+
+        nu_bull = (
+            h_ts + S_tim * d_bp -
+            (
+                h_ts * (d - d_bp) + h_rs * d_bp
+                ) / d
+            ) * sqrt(
+                0.002 * d / lam / d_bp / (d - d_bp)
+                )  # == nu_b in Eq. 20
+        nu_bull_idx = -1  # dummy value
+
+    else:
+        # LOS
+
+        # find Bullington point, etc.
+
+        S_rim = NAN
+
+        # diffraction parameter
+        for i in range(1, dsize - 1):
+            nu_i = (
+                h_v[i] +
+                C_e500 * d_v[i] * (d - d_v[i]) -
+                (h_ts * (d - d_v[i]) + h_rs * d_v[i]) / d
+                ) * sqrt(
+                    0.002 * d / lam / d_v[i] / (d - d_v[i])
+                    )
+            if nu_i > nu_bull:
+                nu_bull = nu_i
+                nu_bull_idx = i
+
+    return (path_type, nu_bull, nu_bull_idx, S_tim, S_rim, S_tr)
 
 
 cdef (int, double, int, double, double, double) _diffraction_helper_v16(
@@ -1653,7 +1861,7 @@ cdef (double, double, double, double, double) _diffraction_loss_complete(
         double L_bfsg, E_sp, E_sbeta, L_min_b0p
         double F_i
 
-    if pp.version == 16:
+    if pp.version == 16 or pp.version == 17:
         L_d_50 = _delta_bullington_loss(pp, 0)
     elif pp.version == 14:
         L_d_50 = _diffraction_deygout_helper(
@@ -1671,7 +1879,7 @@ cdef (double, double, double, double, double) _diffraction_loss_complete(
 
     else:
 
-        if pp.version == 16:
+        if pp.version == 16 or pp.version == 17:
             L_d_beta = _delta_bullington_loss(pp, 1)
         elif pp.version == 14:
             L_d_beta = _diffraction_deygout_helper(
@@ -1770,7 +1978,7 @@ cdef (double, double, double, double, double, double, double) _path_attenuation_
             )
 
     # not sure, if the 50% S_tim and S_tr values are to be used here...
-    if pp.version == 16:
+    if pp.version == 16 or pp.version == 17:
         F_j = 1 - 0.5 * (1. + tanh(
             3. * _XI * (pp.S_tim_50 - pp.S_tr_50) / _THETA
             ))
@@ -2367,7 +2575,7 @@ def atten_map_fast_cython(
     # clutter zone type is possible for each of Tx and Rx
 
     assert time_percent <= 50.
-    assert version == 14 or version == 16
+    assert version == 14 or version == 16 or version == 17
 
     cdef:
         # must set gains to zero, because gain is direction dependent
@@ -2617,7 +2825,7 @@ def atten_path_fast_cython(
     # clutter zone type is possible for each of Tx and Rx
 
     assert time_percent <= 50.
-    assert version == 14 or version == 16
+    assert version == 14 or version == 16 or version == 17
 
     cdef:
         # must set gains to zero, because gain is direction dependent
