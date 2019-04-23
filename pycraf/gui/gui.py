@@ -444,9 +444,12 @@ class PycrafGui(QtWidgets.QMainWindow):
             (_delta[-1] - _delta[0]) / (_distances[-1] - _distances[0])
             )
 
+        _h_ts = results['h_ts'].to(u.m).value
+        _h_rs = results['h_rs'].to(u.m).value
+
         # bullington point:
 
-        def bullpoint(a_p, d, h_ts, h_rs, S_tim, S_rim):
+        def bullpoint_transhorizon(a_p, d, h_ts, h_rs, S_tim, S_rim, S_tr):
 
             eps = d / a_p
             x0 = 0
@@ -468,7 +471,49 @@ class PycrafGui(QtWidgets.QMainWindow):
             d_bp = eps_bp * a_p  # km
             h_bp = np.sqrt(x_bp ** 2 + y_bp ** 2) - 1000 * a_p  # m
 
-            return d_bp, h_bp
+            # calculate effective knife-edge height
+            n0 = y_bp + x_bp / S_tr * 1000
+            x_ke = -(1000 * a_p + h_ts - n0) / (S_tr / 1000 + 1000 / S_tr)
+            y_ke = S_tr / 1000 * x_ke + 1000 * a_p + h_ts
+            eps_ke = np.arctan2(x_ke, y_ke)
+            d_ke = eps_ke * a_p  # km
+            h_ke = np.sqrt(x_ke ** 2 + y_ke ** 2) - 1000 * a_p  # m
+
+            # needed for diffraction parameter
+            h_eff = np.sqrt((x_ke - x_bp) ** 2 + (y_ke - y_bp) ** 2)
+            d1 = np.sqrt((x_ke - x0) ** 2 + (y_ke - y0) ** 2) / 1000
+            d2 = np.sqrt((x_ke - xn) ** 2 + (y_ke - yn) ** 2) / 1000
+
+            return d_bp, h_bp, d_ke, h_ke
+
+        def bullpoint_los(a_p, d_i, h_i, h_ts, h_rs, S_tr):
+
+            eps_i = d_i / a_p
+            x0 = 0
+            y0 = 1000 * a_p + h_ts
+            xi = (1000 * a_p + h_i) * np.sin(eps_i)
+            yi = (1000 * a_p + h_i) * np.cos(eps_i)
+            xn = (1000 * a_p + h_rs) * np.sin(eps_i[-1])
+            yn = (1000 * a_p + h_rs) * np.cos(eps_i[-1])
+
+            # calculate effective knife-edge heights (negative)
+            n0 = yi + xi / S_tr * 1000
+            x_ke = -(1000 * a_p + h_ts - n0) / (S_tr / 1000 + 1000 / S_tr)
+            y_ke = S_tr / 1000 * x_ke + 1000 * a_p + h_ts
+            eps_ke = np.arctan2(x_ke, y_ke)
+            d_ke = eps_ke * a_p  # km
+            h_ke = np.sqrt(x_ke ** 2 + y_ke ** 2) - 1000 * a_p  # m
+
+            # needed for diffraction parameter
+            h_eff = -np.sqrt((x_ke - xi) ** 2 + (y_ke - yi) ** 2)
+            d1 = np.sqrt((x_ke - x0) ** 2 + (y_ke - y0) ** 2) / 1000
+            d2 = np.sqrt((x_ke - xn) ** 2 + (y_ke - yn) ** 2) / 1000
+
+            max_i = np.argmax(
+                (h_eff * np.sqrt(2 * (d1 + d2) / d1 / d2))[1:-1]
+                )
+
+            return d_i[max_i], h_i[max_i], d_ke[max_i], h_ke[max_i]
 
         a_e = results['a_e_50'].to(u.m).value
 
@@ -480,29 +525,35 @@ class PycrafGui(QtWidgets.QMainWindow):
         # _d_bp = d_bp.to(u.km).value
         # _h_bp = h_bp.to(u.m).value
 
-        _d_bp, _h_bp = bullpoint(
-            results['a_e_50'].to(u.km).value,
-            distance.to(u.km).value,
-            results['h_ts'].to(u.m).value,
-            results['h_rs'].to(u.m).value,
-            results['S_tim_50'].to(u.m / u.km).value,
-            results['S_rim_50'].to(u.m / u.km).value,
-            )
-        print('d_bp, h_bp', _d_bp, _h_bp)
-
         if results['path_type'] == 1:
-            pp_x = [_distances[0], _d_bp, _distances[-1]]
-            pp_y = [_heights[0] + _h_tg, _h_bp, _heights[-1] + _h_rg]
+            _d_bp, _h_bp, _d_ke, _h_ke = bullpoint_transhorizon(
+                results['a_e_50'].to(u.km).value,
+                distance.to(u.km).value,
+                _h_ts,
+                _h_rs,
+                results['S_tim_50'].to(u.m / u.km).value,
+                results['S_rim_50'].to(u.m / u.km).value,
+                results['S_tr_50'].to(u.m / u.km).value,
+                )
         else:
-            pp_x = _distances[[0, -1]]
-            pp_y = [_heights[0] + _h_tg, _heights[-1] + _h_rg]
+            _d_bp, _h_bp, _d_ke, _h_ke = bullpoint_los(
+                results['a_e_50'].to(u.km).value,
+                distances.to(u.km).value,
+                heights.to(u.m).value,
+                _h_ts,
+                _h_rs,
+                results['S_tr_50'].to(u.m / u.km).value,
+                )
 
+        print('d_bp, h_bp, d_ke, h_ke', _d_bp, _h_bp, _d_ke, _h_ke)
         # # need to interpolate path (plot does straight lines)
         # pp_hx = np.linspace(_distances[0], _distances[-1], 400)
         # pp_hy = interp1d(pp_x, pp_y)(pp_hx)
 
         theta_lim = _distances[0], _distances[-1]
-        h_lim = _heights.min(), 1.05 * max([_heights.max(), max(pp_y)])
+        h_lim = _heights.min(), 1.05 * max([
+            _heights.max(), _h_bp, _h_ke, _h_ts, _h_rs
+            ])
 
         plot_area = self.geometry_plot_area
         fig = plot_area.figure
@@ -521,34 +572,47 @@ class PycrafGui(QtWidgets.QMainWindow):
 
         aux_ax.plot(_distances, _heights, '-')
         # aux_ax.plot(pp_x, pp_y, '-')
-        aux_ax.plot(pp_x[1], pp_y[1], 'o')
+        aux_ax.plot([_d_bp, _d_ke], [_h_bp, _h_ke], 'o')
 
         # testing:
-        a = np.arange(0, 100, 1)
+
+        if results['path_type'] == 1:
+            a = np.arange(0, 200, 1)
+            # all numbers in km
+            x0 = 0
+            y0 = results['a_e_50'].to(u.km).value + results['h_ts'].to(u.km).value
+            x_a = x0 + a
+            y_a = y0 + a * results['S_tim_50'].to(u.km / u.km).value
+            d_a = np.arctan2(x_a, y_a) * results['a_e_50'].to(u.km).value
+            h_a = np.sqrt(x_a ** 2 + y_a ** 2) - results['a_e_50'].to(u.km).value
+            # print(d_a, h_a)
+            aux_ax.plot(d_a, h_a * 1000, '--')
+
+            b = np.arange(0, 200, 1)
+            # all numbers in km
+            eps = distance.to(u.km).value / results['a_e_50'].to(u.km).value
+            rn = results['a_e_50'].to(u.km).value + results['h_rs'].to(u.km).value
+            xn = rn * np.sin(eps)
+            yn = rn * np.cos(eps)
+            x_b = xn - b
+            y_b = yn + b * np.tan(
+                np.arctan(results['S_rim_50'].to(u.km / u.km).value) + eps
+                )
+            d_b = np.arctan2(x_b, y_b) * results['a_e_50'].to(u.km).value
+            h_b = np.sqrt(x_b ** 2 + y_b ** 2) - results['a_e_50'].to(u.km).value
+            # print(d_b, h_b)
+            aux_ax.plot(d_b, h_b * 1000, '--')
+
+        c = np.arange(0, 200, 1)
         # all numbers in km
         x0 = 0
         y0 = results['a_e_50'].to(u.km).value + results['h_ts'].to(u.km).value
-        x_a = x0 + a
-        y_a = y0 + a * results['S_tim_50'].to(u.km / u.km).value
-        d_a = np.arctan2(x_a, y_a) * results['a_e_50'].to(u.km).value
-        h_a = np.sqrt(x_a ** 2 + y_a ** 2) - results['a_e_50'].to(u.km).value
-        print(d_a, h_a)
-        aux_ax.plot(d_a, h_a * 1000, '--')
-
-        b = np.arange(0, 100, 1)
-        # all numbers in km
-        eps = distance.to(u.km).value / results['a_e_50'].to(u.km).value
-        rn = results['a_e_50'].to(u.km).value + results['h_rs'].to(u.km).value
-        xn = rn * np.sin(eps)
-        yn = rn * np.cos(eps)
-        x_b = xn - b
-        y_b = yn + b * np.tan(
-            np.arctan(results['S_rim_50'].to(u.km / u.km).value) + eps
-            )
-        d_b = np.arctan2(x_b, y_b) * results['a_e_50'].to(u.km).value
-        h_b = np.sqrt(x_b ** 2 + y_b ** 2) - results['a_e_50'].to(u.km).value
-        print(d_b, h_b)
-        aux_ax.plot(d_b, h_b * 1000, '--')
+        x_c = x0 + c
+        y_c = y0 + c * results['S_tr_50'].to(u.km / u.km).value
+        d_c = np.arctan2(x_c, y_c) * results['a_e_50'].to(u.km).value
+        h_c = np.sqrt(x_c ** 2 + y_c ** 2) - results['a_e_50'].to(u.km).value
+        # print(d_c, h_c)
+        aux_ax.plot(d_c, h_c * 1000, '--')
 
         # aux_ax.plot(pp_hx, pp_hy, '-')
         ax.grid(color='0.5')

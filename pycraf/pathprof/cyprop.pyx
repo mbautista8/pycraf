@@ -130,12 +130,16 @@ PARAMETERS_BASIC = [
 
 PARAMETERS_V17 = PARAMETERS_V16 = [
     ('path_type_50', '12d', '(0 - LOS, 1 - transhoriz)', cnv.dimless),
+    ('d_bp_50', '12.6f', 'km', apu.km),
+    ('h_eff_50', '12.6f', 'm', apu.m),
     ('nu_bull_50', '12.6f', 'dimless', cnv.dimless),
     ('nu_bull_idx_50', '12d', 'dimless', cnv.dimless),
     ('S_tim_50', '12.6f', 'm / km', apu.m / apu.km),
     ('S_rim_50', '12.6f', 'm / km', apu.m / apu.km),
     ('S_tr_50', '12.6f', 'm / km', apu.m / apu.km),
     ('path_type_b0', '12d', '(0 - LOS, 1 - transhoriz)', cnv.dimless),
+    ('d_bp_b0', '12.6f', 'km', apu.km),
+    ('h_eff_b0', '12.6f', 'm', apu.m),
     ('nu_bull_b0', '12.6f', 'dimless', cnv.dimless),
     ('nu_bull_idx_b0', '12d', 'dimless', cnv.dimless),
     ('S_tim_b0', '12.6f', 'm / km', apu.m / apu.km),
@@ -143,6 +147,8 @@ PARAMETERS_V17 = PARAMETERS_V16 = [
     ('S_tr_b0', '12.6f', 'm / km', apu.m / apu.km),
     # ('a_e_zh_50', '12.6f', 'km', apu.km),
     ('path_type_zh_50', '12d', '(0 - LOS, 1 - transhoriz)', cnv.dimless),
+    ('d_bp_zh_50', '12.6f', 'km', apu.km),
+    ('h_eff_zh_50', '12.6f', 'm', apu.m),
     ('nu_bull_zh_50', '12.6f', 'dimless', cnv.dimless),
     ('nu_bull_idx_zh_50', '12d', 'dimless', cnv.dimless),
     ('S_tim_zh_50', '12.6f', 'm / km', apu.m / apu.km),
@@ -150,6 +156,8 @@ PARAMETERS_V17 = PARAMETERS_V16 = [
     ('S_tr_zh_50', '12.6f', 'm / km', apu.m / apu.km),
     # ('a_e_zh_b0', '12.6f', 'km', apu.km),
     ('path_type_zh_b0', '12d', '(0 - LOS, 1 - transhoriz)', cnv.dimless),
+    ('d_bp_zh_b0', '12.6f', 'km', apu.km),
+    ('h_eff_zh_b0', '12.6f', 'm', apu.m),
     ('nu_bull_zh_b0', '12.6f', 'dimless', cnv.dimless),
     ('nu_bull_idx_zh_b0', '12d', 'dimless', cnv.dimless),
     ('S_tim_zh_b0', '12.6f', 'm / km', apu.m / apu.km),
@@ -236,6 +244,8 @@ cdef struct ppstruct:
 
     # V16/17 diffraction calculation parameters
     int path_type_50  # 0 - LOS, 1 - transhoriz
+    double d_bp_50  # km, distance of bullington point
+    double h_eff_50  # m, eff. height of knife edge (<0: LoS, >0 transhor)
     double nu_bull_50  # dimless
     int nu_bull_idx_50  # dimless
     double S_tim_50  # m / km
@@ -243,6 +253,8 @@ cdef struct ppstruct:
     double S_tr_50  # m / km
 
     int path_type_b0  # 0 - LOS, 1 - transhoriz
+    double d_bp_b0
+    double h_eff_b0
     double nu_bull_b0  # dimless
     int nu_bull_idx_b0  # dimless
     double S_tim_b0  # m / km
@@ -251,6 +263,8 @@ cdef struct ppstruct:
     # double a_e_zh_50  # km
 
     int path_type_zh_50  # 0 - LOS, 1 - transhoriz
+    double d_bp_zh_50
+    double h_eff_zh_50
     double nu_bull_zh_50  # dimless
     int nu_bull_idx_zh_50  # dimless
     double S_tim_zh_50  # m / km
@@ -259,6 +273,8 @@ cdef struct ppstruct:
     # double a_e_zh_b0  # km
 
     int path_type_zh_b0  # 0 - LOS, 1 - transhoriz
+    double d_bp_zh_b0
+    double h_eff_zh_b0
     double nu_bull_zh_b0  # dimless
     int nu_bull_idx_zh_b0  # dimless
     double S_tim_zh_b0  # m / km
@@ -596,8 +612,8 @@ cdef void _process_path(
     # TODO: simply use a func typedef for v16 & v17 (dry principle )
     if pp.version == 16:
         (
-            pp.path_type_50, pp.nu_bull_50,
-            pp.nu_bull_idx_50,
+            pp.path_type_50, pp.d_bp_50, pp.h_eff_50,
+            pp.nu_bull_50, pp.nu_bull_idx_50,
             pp.S_tim_50, pp.S_rim_50, pp.S_tr_50
             ) = _diffraction_helper_v16(
             pp.a_e_50, pp.distance,
@@ -607,8 +623,8 @@ cdef void _process_path(
             )
 
         (
-            pp.path_type_b0, pp.nu_bull_b0,
-            pp.nu_bull_idx_b0,
+            pp.path_type_b0, pp.d_bp_b0, pp.h_eff_b0,
+            pp.nu_bull_b0, pp.nu_bull_idx_b0,
             pp.S_tim_b0, pp.S_rim_b0, pp.S_tr_b0
             ) = _diffraction_helper_v16(
             pp.a_e_b0, pp.distance,
@@ -620,8 +636,8 @@ cdef void _process_path(
         # similarly, we have to repeat the game with heights set to zero
 
         (
-            pp.path_type_zh_50, pp.nu_bull_zh_50,
-            pp.nu_bull_idx_zh_50,
+            pp.path_type_zh_50, pp.d_bp_zh_50, pp.h_eff_zh_50,
+            pp.nu_bull_zh_50, pp.nu_bull_idx_zh_50,
             pp.S_tim_zh_50, pp.S_rim_zh_50, pp.S_tr_zh_50
             ) = _diffraction_helper_v16(
             pp.a_e_50, pp.distance,
@@ -631,8 +647,8 @@ cdef void _process_path(
             )
 
         (
-            pp.path_type_zh_b0, pp.nu_bull_zh_b0,
-            pp.nu_bull_idx_zh_b0,
+            pp.path_type_zh_b0, pp.d_bp_zh_b0, pp.h_eff_zh_b0,
+            pp.nu_bull_zh_b0, pp.nu_bull_idx_zh_b0,
             pp.S_tim_zh_b0, pp.S_rim_zh_b0, pp.S_tr_zh_b0
             ) = _diffraction_helper_v16(
             pp.a_e_b0, pp.distance,
@@ -643,8 +659,8 @@ cdef void _process_path(
 
     elif pp.version == 17:
         (
-            pp.path_type_50, pp.nu_bull_50,
-            pp.nu_bull_idx_50,
+            pp.path_type_50, pp.d_bp_50, pp.h_eff_50,
+            pp.nu_bull_50, pp.nu_bull_idx_50,
             pp.S_tim_50, pp.S_rim_50, pp.S_tr_50
             ) = _diffraction_helper_v17(
             pp.a_e_50, pp.distance,
@@ -654,8 +670,8 @@ cdef void _process_path(
             )
 
         (
-            pp.path_type_b0, pp.nu_bull_b0,
-            pp.nu_bull_idx_b0,
+            pp.path_type_b0, pp.d_bp_b0, pp.h_eff_b0,
+            pp.nu_bull_b0, pp.nu_bull_idx_b0,
             pp.S_tim_b0, pp.S_rim_b0, pp.S_tr_b0
             ) = _diffraction_helper_v17(
             pp.a_e_b0, pp.distance,
@@ -667,8 +683,8 @@ cdef void _process_path(
         # similarly, we have to repeat the game with heights set to zero
 
         (
-            pp.path_type_zh_50, pp.nu_bull_zh_50,
-            pp.nu_bull_idx_zh_50,
+            pp.path_type_zh_50, pp.d_bp_zh_50, pp.h_eff_zh_50,
+            pp.nu_bull_zh_50, pp.nu_bull_idx_zh_50,
             pp.S_tim_zh_50, pp.S_rim_zh_50, pp.S_tr_zh_50
             ) = _diffraction_helper_v17(
             pp.a_e_50, pp.distance,
@@ -678,8 +694,8 @@ cdef void _process_path(
             )
 
         (
-            pp.path_type_zh_b0, pp.nu_bull_zh_b0,
-            pp.nu_bull_idx_zh_b0,
+            pp.path_type_zh_b0, pp.d_bp_zh_b0, pp.h_eff_zh_b0,
+            pp.nu_bull_zh_b0, pp.nu_bull_idx_zh_b0,
             pp.S_tim_zh_b0, pp.S_rim_zh_b0, pp.S_tr_zh_b0
             ) = _diffraction_helper_v17(
             pp.a_e_b0, pp.distance,
@@ -855,42 +871,114 @@ cdef inline double _slope_v17(
     return 1000 * tan(theta_i)
 
 
-cdef inline (double, double) _bullpoint_v17(
+cdef inline (
+    double, double, double, double, double
+    ) _bullpoint_transhorizon_v17(
         double a_p,
         double d,
         double h_ts,
         double h_rs,
         double S_tim,
         double S_rim,
+        double S_tr,
         ) nogil:
 
     cdef:
         double eps, eps_bp
         double x0, y0, xn, yn, x_bp, y_bp
-        double b
-        double d_bp, h_bp
+        double b, S_rim_ast
+        double d_bp, h_bp, h_knife
+
+        double n0
+        double x_ke, y_ke  # pos of knife edge in earth centered cart sys
+        double eps_ke
+        double d_ke, h_ke  # pos of knife edge in local frame
+        double h_eff  # effective height of knife edge
+        double d1, d2  # distance from Tx/Rx to BP
 
     eps = d / a_p
     x0 = 0
     y0 = 1000 * a_p + h_ts
     xn = (1000 * a_p + h_rs) * sin(eps)
     yn = (1000 * a_p + h_rs) * cos(eps)
+    S_rim_ast = tan(atan(S_rim / 1000) + eps)
 
-    b = (y0 - yn - (x0 - xn) * S_tim / 1000) / (S_tim / 1000 + S_rim / 1000)
+    b = (y0 - yn - (x0 - xn) * S_tim / 1000) / (S_tim / 1000 + S_rim_ast)
 
     x_bp = xn - b
-    y_bp = yn + b * (tan(atan(S_rim / 1000) + eps))
+    y_bp = yn + b * S_rim_ast
 
-    eps_bp = atan2(y_bp, x_bp)
-    d_bp = eps_bp * a_p
-    h_bp = sqrt(x_bp ** 2 + y_bp ** 2) - a_p
+    eps_bp = atan2(x_bp, y_bp)
+    d_bp = eps_bp * a_p  # km
+    h_bp = sqrt(x_bp ** 2 + y_bp ** 2) - 1000 * a_p
 
-    return d_bp / 1000, h_bp
+    # now calculate effective knife edge height
+    n0 = y_bp + x_bp / S_tr * 1000
+    x_ke = -(1000 * a_p + h_ts - n0) / (S_tr / 1000 + 1000 / S_tr)
+    y_ke = S_tr / 1000 * x_ke + 1000 * a_p + h_ts
+    eps_ke = atan2(x_ke, y_ke)
+    d_ke = eps_ke * a_p  # km
+    h_ke = sqrt(x_ke ** 2 + y_ke ** 2) - 1000 * a_p  # m
+
+    # needed for diffraction parameter
+    h_eff = sqrt((x_ke - x_bp) ** 2 + (y_ke - y_bp) ** 2)  # m
+    d1 = sqrt((x_ke - x0) ** 2 + (y_ke - y0) ** 2) / 1000  # km
+    d2 = sqrt((x_ke - xn) ** 2 + (y_ke - yn) ** 2) / 1000  # km
+
+    return d_bp, h_bp, h_eff, d1, d2
+
+cdef inline (
+    double, double, double, double, double
+    ) _bullpoint_los_v17(
+        double a_p,
+        double d,
+        double h_ts,
+        double h_rs,
+        double d_i,
+        double h_i,
+        double S_tr,
+        ) nogil:
+
+    cdef:
+
+        double eps_i
+        double x0, y0, xi, yi, xn, yn
+
+        double n0
+        double x_ke, y_ke  # pos of knife edge in earth centered cart sys
+        double eps_ke
+        double d_ke, h_ke  # pos of knife edge in local frame
+        double h_eff  # effective height of knife edge
+        double d1, d2  # distance from Tx/Rx to BP
+
+    eps_i = d_i / a_p
+    x0 = 0
+    y0 = 1000 * a_p + h_ts
+    xi = (1000 * a_p + h_i) * sin(eps_i)
+    yi = (1000 * a_p + h_i) * cos(eps_i)
+    xn = (1000 * a_p + h_rs) * sin(d / a_p)
+    yn = (1000 * a_p + h_rs) * cos(d / a_p)
+
+    # calculate effective knife-edge heights (negative)
+    n0 = yi + xi / S_tr * 1000
+    x_ke = -(1000 * a_p + h_ts - n0) / (S_tr / 1000 + 1000 / S_tr)
+    y_ke = S_tr / 1000 * x_ke + 1000 * a_p + h_ts
+    eps_ke = atan2(x_ke, y_ke)
+    d_ke = eps_ke * a_p  # km
+    h_ke = sqrt(x_ke ** 2 + y_ke ** 2) - 1000 * a_p  # m
+
+    # needed for diffraction parameter
+    h_eff = -sqrt((x_ke - xi) ** 2 + (y_ke - yi) ** 2)
+    d1 = sqrt((x_ke - x0) ** 2 + (y_ke - y0) ** 2) / 1000  # km
+    d2 = sqrt((x_ke - xn) ** 2 + (y_ke - yn) ** 2) / 1000  # km
+
+    return d_ke, h_ke, h_eff, d1, d2
 
 
 
-
-cdef (int, double, int, double, double, double) _diffraction_helper_v17(
+cdef (
+    int, double, double, double, int, double, double, double
+    ) _diffraction_helper_v17(
         double a_p,
         double distance,
         double[::1] d_v,
@@ -913,6 +1001,8 @@ cdef (int, double, int, double, double, double) _diffraction_helper_v17(
         double xi, yi
         double v1_norm, v2_norm
         double eps_i, alpha_i, beta_i, theta_i
+        double h_eff, h_eff_i
+        double d_ke, h_ke
 
     dsize = d_v.shape[0]
 
@@ -947,16 +1037,23 @@ cdef (int, double, int, double, double, double) _diffraction_helper_v17(
                 S_rim = slope_j
 
         # TODO: are the following two equations correct??? don't think so!
-        d_bp = (h_rs - h_ts + S_rim * d) / (S_tim + S_rim)
+        # d_bp = (h_rs - h_ts + S_rim * d) / (S_tim + S_rim)
 
-        nu_bull = (
-            h_ts + S_tim * d_bp -
-            (
-                h_ts * (d - d_bp) + h_rs * d_bp
-                ) / d
-            ) * sqrt(
-                0.002 * d / lam / d_bp / (d - d_bp)
-                )  # == nu_b in Eq. 20
+        d_bp, h_bp, h_eff, d1, d2 = _bullpoint_transhorizon_v17(
+            a_p, d, h_ts, h_rs, S_tim, S_rim, S_tr,
+            )
+
+        # nu_bull = (
+        #     h_ts + S_tim * d_bp -
+        #     (
+        #         h_ts * (d - d_bp) + h_rs * d_bp
+        #         ) / d
+        #     ) * sqrt(
+        #         0.002 * d / lam / d_bp / (d - d_bp)
+        #         )  # == nu_b in Eq. 20
+        nu_bull = h_eff * sqrt(
+            0.002 * (d1 + d2) / lam / d1 / d2
+            )  # == nu_b in Eq. 20
         nu_bull_idx = -1  # dummy value
 
     else:
@@ -968,21 +1065,32 @@ cdef (int, double, int, double, double, double) _diffraction_helper_v17(
 
         # diffraction parameter
         for i in range(1, dsize - 1):
-            nu_i = (
-                h_v[i] +
-                C_e500 * d_v[i] * (d - d_v[i]) -
-                (h_ts * (d - d_v[i]) + h_rs * d_v[i]) / d
-                ) * sqrt(
-                    0.002 * d / lam / d_v[i] / (d - d_v[i])
-                    )
+            # nu_i = (
+            #     h_v[i] +
+            #     C_e500 * d_v[i] * (d - d_v[i]) -
+            #     (h_ts * (d - d_v[i]) + h_rs * d_v[i]) / d
+            #     ) * sqrt(
+            #         0.002 * d / lam / d_v[i] / (d - d_v[i])
+            #         )
+
+            d_ke, h_ke, h_eff_i, d1, d2 = _bullpoint_los_v17(
+                a_p, d, h_ts, h_rs, d_v[i], h_v[i], S_tr,
+                )
+            nu_i = h_eff_i * sqrt(
+                0.002 * (d1 + d2) / lam / d1 / d2
+                )
             if nu_i > nu_bull:
                 nu_bull = nu_i
                 nu_bull_idx = i
+                h_eff = h_eff_i
+                d_bp = d_ke
 
-    return (path_type, nu_bull, nu_bull_idx, S_tim, S_rim, S_tr)
+    return (path_type, d_bp, h_eff, nu_bull, nu_bull_idx, S_tim, S_rim, S_tr)
 
 
-cdef (int, double, int, double, double, double) _diffraction_helper_v16(
+cdef (
+    int, double, double, double, int, double, double, double
+    ) _diffraction_helper_v16(
         double a_p,
         double distance,
         double[::1] d_v,
@@ -1000,6 +1108,7 @@ cdef (int, double, int, double, double, double) _diffraction_helper_v16(
 
         int nu_bull_idx
         double d_bp, nu_bull = -1.e31, nu_i
+        double h_eff, h_eff_i
 
     dsize = d_v.shape[0]
 
@@ -1031,15 +1140,16 @@ cdef (int, double, int, double, double, double) _diffraction_helper_v16(
                 S_rim = slope_j
 
         d_bp = (h_rs - h_ts + S_rim * d) / (S_tim + S_rim)
-
-        nu_bull = (
+        h_eff = (
             h_ts + S_tim * d_bp -
             (
                 h_ts * (d - d_bp) + h_rs * d_bp
                 ) / d
-            ) * sqrt(
-                0.002 * d / lam / d_bp / (d - d_bp)
-                )  # == nu_b in Eq. 20
+            )
+
+        nu_bull = h_eff * sqrt(
+            0.002 * d / lam / d_bp / (d - d_bp)
+            )  # == nu_b in Eq. 20
         nu_bull_idx = -1  # dummy value
 
     else:
@@ -1051,18 +1161,21 @@ cdef (int, double, int, double, double, double) _diffraction_helper_v16(
 
         # diffraction parameter
         for i in range(1, dsize - 1):
-            nu_i = (
+            h_eff_i = (
                 h_v[i] +
                 C_e500 * d_v[i] * (d - d_v[i]) -
                 (h_ts * (d - d_v[i]) + h_rs * d_v[i]) / d
-                ) * sqrt(
-                    0.002 * d / lam / d_v[i] / (d - d_v[i])
-                    )
+                )
+            nu_i = h_eff_i * sqrt(
+                0.002 * d / lam / d_v[i] / (d - d_v[i])
+                )
             if nu_i > nu_bull:
                 nu_bull = nu_i
                 nu_bull_idx = i
+                d_bp = d_v[i]
+                h_eff = h_eff_i
 
-    return (path_type, nu_bull, nu_bull_idx, S_tim, S_rim, S_tr)
+    return (path_type, d_bp, h_eff, nu_bull, nu_bull_idx, S_tim, S_rim, S_tr)
 
 
 cdef (
